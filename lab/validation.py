@@ -12,6 +12,7 @@ import json
 import math
 
 from .detection import Parameters
+from .diagnostics import diagnose_session
 from .replay import ReplaySession
 
 
@@ -49,6 +50,7 @@ def _run_sample(candles, params, *, initial_equity, risk_fraction, fee_rate, sli
                             risk_fraction=risk_fraction,
                             fee_rate=fee_rate, slippage=slippage)
     raw = session.summary()
+    diagnostics = diagnose_session(session)
     trades = []
     for t in raw['trades']:
         trade = dict(t)
@@ -99,6 +101,7 @@ def _run_sample(candles, params, *, initial_equity, risk_fraction, fee_rate, sli
                     'exposure_pct': exposure/len(session.frames)*100,
                     'has_open_position_at_end': bool(raw['open_position'])},
         'trades': trades, 'equity_curve': curve, 'decisions': decisions,
+        'diagnostics': diagnostics,
     }
 
 
@@ -174,7 +177,7 @@ def validate_history(candles, *, source, interval_minutes=None, train_fraction=.
         'Низкое число сделок не позволяет делать выводы о статистической значимости.',
     ]
     return {
-        'version': '0.4',
+        'version': '0.5',
         'source': str(source),
         'quality': quality,
         'split': {'train_count': split, 'holdout_count': n-split,
@@ -187,7 +190,7 @@ def validate_history(candles, *, source, interval_minutes=None, train_fraction=.
                         'holdout_uses_own_warmup': True},
         'selected_preset': name,
         'selected_parameters': asdict(selected_parameters),
-        'selection_explanation': ('Параметры выбранны по TRAIN'
+        'selection_explanation': ('Параметры выбраны по TRAIN'
                                   if qualified else
                                   'В TRAIN недостаточно сделок для выбора; сохранена базовая настройка'),
         'candidate_training_scores': candidates,
@@ -226,6 +229,23 @@ def export_validation(report, directory):
                     'rsi','ema_fast','ema_slow','atr','range_bottom','range_top',
                     'equity','explanation'),
                    out['decisions'])
+        diag = out.get('diagnostics')
+        if diag:
+            _write_csv(folder/(group+'_diagnostic_gates.csv'),
+                       ('index','timestamp','utc','price','replay_action','phase',
+                        'reason_code','reason','operation_code','operation_reason',
+                        'reference_bottom','reference_top','atr','rsi',
+                        'relative_in_range','impulse_atr_multiple','range_width_pct',
+                        'actionable_hypothesis'),
+                       diag['candle_diagnostics'])
+            _write_csv(folder/(group+'_trade_risk.csv'),
+                       ('side','signal_index','opened','closed','entry','exit','stop','target',
+                        'size','pnl','reason','entry_fee','exit_fee','price_stop_distance',
+                        'price_stop_distance_pct','risk_usdt','total_fee_usdt',
+                        'fee_to_risk_pct','stop_distance_atr','net_r_multiple',
+                        'duration_bars','same_bar_exit','reentry_after_loss_24bars',
+                        'same_direction_reentry_after_loss_24bars'),
+                       diag['trades'])
     return folder
 
 
@@ -240,5 +260,9 @@ def short_summary(report):
         f"HOLDOUT: {b['trade_count']} сделок, {b['return_pct']:+.2f}%, "
         f"DD {b['max_drawdown_pct']:.2f}%, PF {b['profit_factor']}\n"
         f"BASELINE HOLDOUT: {c['return_pct']:+.2f}% на {c['trade_count']} сделках\n"
-        "ВНИМАНИЕ: это виртуальный тест на OHLC; карта ликвидаций не участвовала."
+        "ВНИМАНИЕ: это виртуальный тест на OHLC; карта ликвидаций не участвовала.\\n"
+        "ФИЛЬТРЫ HOLDOUT: " +
+        '; '.join(f"{code}={count}" for code,count in
+                  sorted(report['holdout']['diagnostics']['actual_gate_counts'].items(),
+                         key=lambda x:-x[1])[:4])
     )
