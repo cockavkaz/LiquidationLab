@@ -3,9 +3,11 @@ import csv
 import json
 import tempfile
 import unittest
+from urllib.error import HTTPError
 from pathlib import Path
 
 from lab.detection import Parameters
+from lab.history import fetch_bybit_history
 from lab.models import Candle
 from lab.sources import synthetic_scenario
 from lab.validation import (validate_history, export_validation,
@@ -91,6 +93,12 @@ class ValidationTests(unittest.TestCase):
         self.assertIn('OHLC',short_summary(a))
         self.assertTrue(any('CoinGlass' in t for t in a['warnings']))
         self.assertTrue(a['assumptions']['holdout_uses_own_warmup'])
+
+    def test_bybit_403_is_explicit_and_does_not_fabricate_history(self):
+        def blocked(request,timeout):
+            raise HTTPError(request.full_url,403,'Forbidden',None,None)
+        with self.assertRaisesRegex(ConnectionError,'HTTP 403'):
+            fetch_bybit_history(days=1,opener=blocked,now_ms=1740000000000)
 
     def test_parameter_presets_unchanged_input(self):
         p=Parameters()

@@ -1,13 +1,6 @@
 name: Read-only Bybit 90-day history validation
 on:
   workflow_dispatch:
-  push:
-    branches: [feature/validation-v0.4]
-    paths:
-      - 'lab/history.py'
-      - 'lab/validation.py'
-      - 'lab/validate_cli.py'
-      - '.github/workflows/bybit-research.yml'
 permissions:
   contents: read
 jobs:
