@@ -52,6 +52,8 @@ def _run_sample(candles, params, *, initial_equity, risk_fraction, fee_rate, sli
     trades = []
     for t in raw['trades']:
         trade = dict(t)
+        if t.get('signal_index') is not None:
+            trade['signal_at_utc'] = utc_label(candles[t['signal_index']].timestamp)
         trade['opened_at_utc'] = utc_label(candles[t['opened']].timestamp)
         trade['closed_at_utc'] = utc_label(candles[t['closed']].timestamp)
         trades.append(trade)
@@ -60,10 +62,18 @@ def _run_sample(candles, params, *, initial_equity, risk_fraction, fee_rate, sli
               'max_drawdown_pct': round(frame.max_drawdown_pct, 6),
               'active': bool(frame.position)}
              for frame in session.frames]
-    decisions = [{'timestamp': f.timestamp, 'utc': utc_label(f.timestamp),
-                  'action': f.action, 'phase': f.phase,
-                  'explanation': f.explanation}
-                 for f in session.frames if f.action != 'OBSERVE']
+    decisions = [
+        {'bar_index': f.index, 'timestamp': f.timestamp,
+         'utc': utc_label(f.timestamp), 'price': f.price,
+         'action': f.action, 'phase': f.phase,
+         'rsi': session._rsi[f.index],
+         'ema_fast': session._ema_fast[f.index],
+         'ema_slow': session._ema_slow[f.index],
+         'atr': session._atr[f.index],
+         'range_bottom': f.setup.bottom if f.setup else None,
+         'range_top': f.setup.top if f.setup else None,
+         'equity': f.equity, 'explanation': f.explanation}
+        for f in session.frames]
     pnl = [t['pnl'] for t in trades]
     loss_runs, run = 0, 0
     for value in pnl:
@@ -205,14 +215,16 @@ def export_validation(report, directory):
     for group in ('training', 'holdout', 'baseline_holdout'):
         out=report[group]
         _write_csv(folder/(group+'_trades.csv'),
-                   ('side','opened','closed','opened_at_utc','closed_at_utc',
+                   ('side','signal_index','signal_at_utc','opened','closed','opened_at_utc','closed_at_utc',
                     'entry','exit','stop','target','size','pnl','reason','entry_fee','exit_fee'),
                    out['trades'])
         _write_csv(folder/(group+'_equity.csv'),
                    ('timestamp','utc','equity','max_drawdown_pct','active'),
                    out['equity_curve'])
         _write_csv(folder/(group+'_decisions.csv'),
-                   ('timestamp','utc','action','phase','explanation'),
+                   ('bar_index','timestamp','utc','price','action','phase',
+                    'rsi','ema_fast','ema_slow','atr','range_bottom','range_top',
+                    'equity','explanation'),
                    out['decisions'])
     return folder
 

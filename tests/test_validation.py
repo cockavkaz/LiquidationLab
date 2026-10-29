@@ -44,9 +44,12 @@ class ValidationTests(unittest.TestCase):
         for partition in ('training','holdout'):
             result=a[partition]
             self.assertEqual(result['metrics']['candles'],len(result['equity_curve']))
+            self.assertEqual(result['metrics']['candles'],len(result['decisions']))
             self.assertGreaterEqual(result['metrics']['max_drawdown_pct'],0)
             for t in result['trades']:
                 self.assertGreaterEqual(t['opened'],1)
+                self.assertEqual(t['opened'],t['signal_index']+1)
+                self.assertIn('UTC',t['signal_at_utc'])
                 self.assertGreaterEqual(t['closed'],t['opened'])
                 self.assertIn('UTC',t['opened_at_utc'])
                 self.assertIn(t['reason'],('TP','SL','SL (обе границы)'))

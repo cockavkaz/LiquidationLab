@@ -81,7 +81,8 @@ class ReplaySession:
         trade = {'side': p['side'], 'entry': p['entry'], 'exit': exit_price,
                  'stop': p['stop'], 'target': p['target'], 'pnl': pnl,
                  'opened': p['opened'], 'closed': index, 'reason': reason,
-                 'size': p['size'], 'entry_fee': p['entry_fee'], 'exit_fee': exit_fee}
+                 'size': p['size'], 'entry_fee': p['entry_fee'], 'exit_fee': exit_fee,
+                 'signal_index': p.get('signal_decided_at')}
         self.trades.append(trade)
         self.markers.append({'index': index, 'type': 'exit', 'price': exit_price,
                              'side': p['side'], 'reason': reason})
@@ -108,7 +109,8 @@ class ReplaySession:
                     self.cash -= fee
                     self.position = {'side': pending['side'], 'sign': sign, 'entry': entry,
                                      'stop': stop, 'target': target, 'size': size,
-                                     'opened': index, 'entry_fee': fee}
+                                     'opened': index, 'entry_fee': fee,
+                                     'signal_decided_at': pending['decided_at']}
                     self.markers.append({'index': index, 'type': 'entry',
                                          'price': entry, 'side': pending['side']})
                     actions.append('ENTRY')
