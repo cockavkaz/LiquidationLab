@@ -25,7 +25,16 @@ jobs:
       - name: Build Android debug APK
         env:
           JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-        run: buildozer -v android debug
+        run: |
+          # Buildozer installs the Android SDK on the first run. The SDK manager
+          # requests license acceptance via stdin; non-interactive CI needs input.
+          # Disable pipefail only for this pipeline: GNU yes can end with SIGPIPE
+          # after a successful build when Buildozer closes stdin.
+          set +o pipefail
+          yes | buildozer -v android debug
+          status=${PIPESTATUS[1]}
+          set -o pipefail
+          exit "$status"
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         if: success()
