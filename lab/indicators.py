@@ -1,73 +1,106 @@
-"""Causal indicators: each value uses historical candles only."""
+"""Causal price indicators: values at t depend on candles up to t only."""
+from typing import Optional, Sequence
 from .models import Candle
 
-def ema(values, period):
-    if period < 1:
-        raise ValueError("period must be positive")
-    output = [None] * len(values)
+
+def ema(values: Sequence[float], period: int) -> list[Optional[float]]:
+    if period <= 0:
+        raise ValueError('period must be positive')
+    result: list[Optional[float]] = [None] * len(values)
     if len(values) < period:
-        return output
-    value = sum(values[:period])/period
-    output[period-1] = value
-    a = 2/(period+1)
-    for i in range(period,len(values)):
-        value += a*(values[i]-value)
-        output[i] = value
-    return output
+        return result
+    v = sum(values[:period]) / period
+    result[period - 1] = v
+    alpha = 2 / (period + 1)
+    for i in range(period, len(values)):
+        v += alpha * (values[i] - v)
+        result[i] = v
+    return result
 
-def rsi(values, period=14):
-    if period < 1:
-        raise ValueError("period must be positive")
-    out = [None]*len(values)
+
+def rsi(values: Sequence[float], period: int = 14) -> list[Optional[float]]:
+    if period <= 0:
+        raise ValueError('period must be positive')
+    result: list[Optional[float]] = [None] * len(values)
     if len(values) <= period:
-        return out
-    diffs=[values[i]-values[i-1] for i in range(1,period+1)]
-    gain=sum(max(d,0) for d in diffs)/period
-    loss=sum(max(-d,0) for d in diffs)/period
-    for i in range(period,len(values)):
-        if i>period:
-            d=values[i]-values[i-1]
-            gain=(gain*(period-1)+max(d,0))/period
-            loss=(loss*(period-1)+max(-d,0))/period
-        out[i] = 50.0 if gain==0 and loss==0 else (100.0 if loss==0 else 100-100/(1+gain/loss))
-    return out
-
-def atr(candles,period=14):
-    if period < 1:
-        raise ValueError("period must be positive")
-    out=[None]*len(candles)
-    if len(candles)<=period:
-        return out
-    tr=[max(c.high-c.low,abs(c.high-candles[i-1].close),abs(c.low-candles[i-1].close))
-        for i,c in enumerate(candles) if i>0]
-    value=sum(tr[:period])/period
-    out[period]=value
-    for i in range(period+1,len(candles)):
-        value=(value*(period-1)+tr[i-1])/period
-        out[i]=value
-    return out
-
-def confirmed_pivots(candles, reversal_pct=.012):
-    """Confirmed ZigZag pivots; not an objectively proven Elliott labeling."""
-    if len(candles)<3 or reversal_pct<=0:
-        return []
-    pivots=[]
-    hi=lo=candles[0].close
-    hi_i=lo_i=0
-    direction=0
-    for i,c in enumerate(candles[1:],1):
-        if direction==0:
-            if c.high>hi: hi,hi_i=c.high,i
-            if c.low<lo: lo,lo_i=c.low,i
-            if hi/lo-1 >= reversal_pct:
-                if hi_i>lo_i: direction=1; pivots.append((lo_i,lo,"L"))
-                else: direction=-1; pivots.append((hi_i,hi,"H"))
-        elif direction==1:
-            if c.high>hi: hi,hi_i=c.high,i
-            if c.low<=hi*(1-reversal_pct):
-                pivots.append((hi_i,hi,"H"));direction=-1;lo,lo_i=c.low,i
+        return result
+    gains, losses = [], []
+    for a, b in zip(values[:period], values[1:period + 1]):
+        gains.append(max(b - a, 0.0))
+        losses.append(max(a - b, 0.0))
+    gain = sum(gains) / period
+    loss = sum(losses) / period
+    for i in range(period, len(values)):
+        if i > period:
+            diff = values[i] - values[i - 1]
+            gain = (gain * (period - 1) + max(diff, 0)) / period
+            loss = (loss * (period - 1) + max(-diff, 0)) / period
+        if gain == 0 and loss == 0:
+            result[i] = 50.0
+        elif loss == 0:
+            result[i] = 100.0
         else:
-            if c.low<lo: lo,lo_i=c.low,i
-            if c.high>=lo*(1+reversal_pct):
-                pivots.append((lo_i,lo,"L"));direction=1;hi,hi_i=c.high,i
+            result[i] = 100 - 100 / (1 + gain / loss)
+    return result
+
+
+def atr(candles: Sequence[Candle], period: int = 14) -> list[Optional[float]]:
+    if period <= 0:
+        raise ValueError('period must be positive')
+    result: list[Optional[float]] = [None] * len(candles)
+    if len(candles) <= period:
+        return result
+    tr = [max(candles[i].high - candles[i].low,
+              abs(candles[i].high - candles[i-1].close),
+              abs(candles[i].low - candles[i-1].close))
+          for i in range(1, len(candles))]
+    v = sum(tr[:period]) / period
+    result[period] = v
+    for i in range(period + 1, len(candles)):
+        v = (v * (period - 1) + tr[i-1]) / period
+        result[i] = v
+    return result
+
+
+def confirmed_pivots(candles: Sequence[Candle], reversal_pct: float = .012) -> list[tuple[int, float, str]]:
+    """ZigZag of CONFIRMED extrema only; final unconfirmed pivot is not included.
+
+    This is exploratory price structure, not an objective Elliott-wave labeling.
+    """
+    if len(candles) < 3 or reversal_pct <= 0:
+        return []
+    pivots = []
+    base = candles[0].close
+    direction = 0
+    peak = base
+    trough = base
+    peak_i = trough_i = 0
+    for i in range(1, len(candles)):
+        h, l = candles[i].high, candles[i].low
+        if direction == 0:
+            if h > peak:
+                peak, peak_i = h, i
+            if l < trough:
+                trough, trough_i = l, i
+            if peak / max(trough, 1e-12) - 1 >= reversal_pct:
+                if peak_i > trough_i:
+                    direction = 1
+                    pivots.append((trough_i, trough, 'L'))
+                else:
+                    direction = -1
+                    pivots.append((peak_i, peak, 'H'))
+        elif direction == 1:
+            if h > peak:
+                peak, peak_i = h, i
+            if l <= peak * (1 - reversal_pct):
+                pivots.append((peak_i, peak, 'H'))
+                direction = -1
+                trough, trough_i = l, i
+        else:
+            if l < trough:
+                trough, trough_i = l, i
+            if h >= trough * (1 + reversal_pct):
+                pivots.append((trough_i, trough, 'L'))
+                direction = 1
+                peak, peak_i = h, i
     return pivots
