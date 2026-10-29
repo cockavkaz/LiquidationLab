@@ -1,0 +1,24 @@
+name: Read-only Bybit 90-day history validation
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  research:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download 90 days of completed BTCUSDT candles and validate
+        run: |
+          python -m lab.validate_cli --bybit --symbol BTCUSDT --interval 60 --days 90 --output reports-real
+      - name: Upload real-data report (only when downloaded and tested successfully)
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: real-bybit-btcusdt-90d-ohlc-validation
+          path: reports-real/
+          if-no-files-found: error

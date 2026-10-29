@@ -1,0 +1,36 @@
+name: Desktop validation 0.4
+on:
+  push:
+    branches: [feature/validation-v0.4]
+  pull_request:
+    paths:
+      - 'lab/**'
+      - 'tests/**'
+      - 'main.py'
+      - '.github/workflows/desktop-validation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    name: tests - ${{ matrix.os }} - Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+        python: ['3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Offline unit tests (no Kivy/API keys)
+        run: python -m unittest discover -s tests -v
+      - name: CLI report smoke test using labeled synthetic data
+        run: python -m lab.validate_cli --demo down --output ci-reports
+      - uses: actions/upload-artifact@v4
+        if: success() && matrix.os == 'ubuntu-22.04' && matrix.python == '3.11'
+        with:
+          name: sample-synthetic-validation-only
+          path: ci-reports/

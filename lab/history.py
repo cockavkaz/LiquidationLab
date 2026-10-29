@@ -5,6 +5,7 @@ Only closed candles are saved, sorted oldest-to-newest and deduplicated.
 """
 import json
 import time
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from .models import Candle
@@ -37,8 +38,17 @@ def fetch_bybit_history(symbol='BTCUSDT', interval='60', days=30,
                   'start': since, 'end': page_end, 'limit': min(1000, max_bars)}
         url = 'https://api.bybit.com/v5/market/kline?' + urlencode(params)
         req = Request(url, headers={'User-Agent': 'LiquidationLab-Educational/0.3'})
-        with opener(req, timeout=timeout) as response:
-            payload = json.loads(response.read().decode('utf-8'))
+        try:
+            with opener(req, timeout=timeout) as response:
+                payload = json.loads(response.read().decode('utf-8'))
+        except HTTPError as exc:
+            if exc.code == 403:
+                raise ConnectionError(
+                    'Bybit returned HTTP 403: this network cannot access the public market API. '
+                    'Run the Windows app where access is permitted or import completed OHLC CSV; '
+                    'no historical result was generated.'
+                ) from exc
+            raise
         if payload.get('retCode') != 0:
             raise ValueError('Bybit returned error: '+str(payload.get('retMsg', 'unknown')))
         rows = payload.get('result', {}).get('list', [])
