@@ -1,0 +1,35 @@
+name: Build educational Android APK
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Python unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git zip unzip openjdk-17-jdk autoconf automake libtool pkg-config cmake build-essential zlib1g-dev libffi-dev libssl-dev libsqlite3-dev liblzma-dev libncurses5-dev libncursesw5-dev
+          python -m pip install --upgrade pip
+          python -m pip install buildozer 'cython==0.29.37' setuptools
+      - name: Build Android debug APK
+        env:
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+        run: buildozer -v android debug
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: liquidation-lab-debug-apk
+          path: bin/*.apk
+          if-no-files-found: error
