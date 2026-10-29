@@ -1,5 +1,6 @@
 """Offline/reproducible CLI validation on real Bybit OHLC or exported CSV."""
 import argparse
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from .history import MINUTES, fetch_bybit_history
@@ -8,6 +9,13 @@ from .validation import export_validation, short_summary, validate_history
 
 
 def main(argv=None):
+    # GitHub-hosted Windows runners and some classic terminals default to
+    # CP1252/CP866. Print Russian diagnostics without UnicodeEncodeError.
+    if hasattr(sys.stdout, 'reconfigure'):
+        try:
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        except (ValueError, OSError):
+            pass
     parser = argparse.ArgumentParser(description='Liquidation Lab 0.4: chronological OHLC-only validation')
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument('--bybit', action='store_true', help='Fetch public finished candles from Bybit')
