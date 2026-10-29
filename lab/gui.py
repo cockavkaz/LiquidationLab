@@ -13,12 +13,15 @@ from kivy.uix.label import Label
 from kivy.uix.slider import Slider
 from kivy.uix.spinner import Spinner
 from kivy.uix.textinput import TextInput
+from kivy.uix.popup import Popup
+from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
 
 from .backtest import simulate
 from .history import fetch_bybit_history
 from .indicators import ema
 from .replay import ReplaySession
+from .validation import validate_history, export_validation, short_summary
 from .sources import (synthetic_scenario, fetch_coinglass_snapshot,
                       load_candles_csv, save_candles_csv)
 
@@ -178,8 +181,9 @@ class MainView(BoxLayout):
         self.busy=False
         self.source='Искусственные свечи'
         self._slider_lock=False
+        self.validation_report=None
 
-        self.add_widget(label('LIQUIDATION LAB 0.3   |   ВОСПРОИЗВЕДЕНИЕ РЫНКА',
+        self.add_widget(label('LIQUIDATION LAB 0.4   |   ВОСПРОИЗВЕДЕНИЕ + ПРОВЕРКА',
                               '20sp', 37, TEAL, True))
         top=BoxLayout(spacing=dp(7),size_hint_y=None,height=dp(41))
         self.mode=spinner('Демо: снижение',('Демо: рост','Демо: снижение','Демо: боковик','Bybit BTCUSDT'),145)
@@ -221,6 +225,7 @@ class MainView(BoxLayout):
 
         actions=BoxLayout(spacing=dp(6),size_hint_y=None,height=dp(40))
         actions.add_widget(button('БЭКТЕСТ',lambda *_:self.backtest()))
+        actions.add_widget(button('TRAIN / HOLDOUT',lambda *_:self.validate_oos()))
         self.csv_path=TextInput(text='data/bybit_history.csv',multiline=False,font_size='12sp',size_hint_x=2)
         actions.add_widget(self.csv_path)
         actions.add_widget(button('CSV ОТКРЫТЬ',lambda *_:self.load_csv()))
@@ -350,6 +355,68 @@ class MainView(BoxLayout):
                           '(включая плавающую просадку)')
         self.run_async(lambda:simulate(candles),done)
 
+    def validate_oos(self):
+        """Independent research holdout; no trading, no live CoinGlass lookahead."""
+        if self.busy:
+            self.set_note('Сейчас загружаются данные; повторите после завершения.')
+            return
+        candles=tuple(self.candles)
+        if len(candles)<300:
+            self.set_note('Для TRAIN/HOLDOUT нужна более длинная история (минимум 300 свечей).')
+            return
+        self.pause()
+        interval=None
+        if len(candles)>1:
+            interval=int((candles[1].timestamp-candles[0].timestamp)/60000)
+        self.run_async(
+            lambda: validate_history(candles,source=self.source,
+                                     interval_minutes=interval,train_fraction=.70),
+            lambda report: self._display_validation(report))
+
+    def _display_validation(self,report):
+        self.validation_report=report
+        headline=short_summary(report)
+        train_n=report['training']['metrics']['trade_count']
+        test_n=report['holdout']['metrics']['trade_count']
+        sample_warning=('ВНИМАНИЕ: мало сделок в TRAIN/HOLDOUT, оценки нестабильны.\\n'
+                        if min(train_n,test_n)<20 else '')
+        details=(headline+'\\n\\n'+sample_warning+
+                 'Настройки выбраны только по TRAIN. Последние 30% — независимый тест.\\n'
+                 'История не содержит исторических карт ликвидаций CoinGlass.\\n\\n'
+                 'ОГРАНИЧЕНИЯ:\\n'+'\\n'.join('• '+x for x in report['warnings']))
+        self.set_note(f"ПРОВЕРКА 70/30: HOLDOUT {report['holdout']['metrics']['return_pct']:+.2f}%; "
+                      f"сделок {test_n}. Экспорт доступен в отчёте.")
+        content=BoxLayout(orientation='vertical',spacing=dp(8),padding=dp(10))
+        sc=ScrollView()
+        lab=Label(text=details,font_size='14sp',color=TEXT,
+                  size_hint_y=None,halign='left',valign='top')
+        lab.bind(width=lambda w,width:setattr(w,'text_size',(max(dp(200),width-dp(20)),None)))
+        lab.bind(texture_size=lambda w,sz:setattr(w,'height',sz[1]+dp(30)))
+        sc.add_widget(lab)
+        content.add_widget(sc)
+        buttons=BoxLayout(size_hint_y=None,height=dp(44),spacing=dp(8))
+        buttons.add_widget(button('ЭКСПОРТ JSON + CSV',lambda *_:self.export_oos()))
+        popup=Popup(title='VALIDATION 0.4 · CHRONOLOGICAL TRAIN / HOLDOUT',
+                    content=content,size_hint=(.88,.86),auto_dismiss=True)
+        buttons.add_widget(button('ЗАКРЫТЬ',lambda *_:popup.dismiss(),110))
+        content.add_widget(buttons)
+        popup.open()
+
+    def export_oos(self):
+        if not self.validation_report:
+            self.set_note('Сначала выполните TRAIN / HOLDOUT.')
+            return
+        from pathlib import Path
+        stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+        folder=Path('reports')/('validation-'+stamp)
+        try:
+            folder.mkdir(parents=True,exist_ok=True)
+            save_candles_csv(folder/'source_candles.csv',self.candles)
+            export_validation(self.validation_report,folder)
+            self.set_note('Отчёт JSON/CSV сохранён: '+str(folder.absolute()))
+        except Exception as exc:
+            self.set_note('Не удалось экспортировать отчёт: '+str(exc))
+
     def set_note(self,text):
         self.note.text=text
 
@@ -413,7 +480,7 @@ class MainView(BoxLayout):
 
 class LiquidationLabApp(App):
     def build(self):
-        self.title='Liquidation Lab 0.3 — исследование рынка'
+        self.title='Liquidation Lab 0.4 — воспроизведение и проверка'
         Window.clearcolor=(.045,.062,.102,1)
         if Window.system_size[0] < 1040:
             Window.size=(1160,790)
