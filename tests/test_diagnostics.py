@@ -1,6 +1,9 @@
 """Offline regression tests for diagnostic-only version 0.5."""
 import csv
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,7 +13,7 @@ from lab.diagnostics import explain_at, diagnose_session, diagnostic_summary, RE
 from lab.models import Candle
 from lab.replay import ReplaySession
 from lab.sources import synthetic_scenario
-from lab.validation import validate_history, export_validation
+from lab.validation import validate_history, export_validation, short_summary
 
 
 class DiagnosticsTests(unittest.TestCase):
@@ -99,6 +102,7 @@ class DiagnosticsTests(unittest.TestCase):
     def test_chronological_export_contains_diagnostics(self):
         report=validate_history(self.candles,source='ARTIFICIAL TEST',tune=False)
         self.assertEqual(report['version'],'0.5')
+        self.assertIn('\nФИЛЬТРЫ HOLDOUT: ', short_summary(report))
         for k in ('training','holdout','baseline_holdout'):
             part=report[k]
             self.assertEqual(len(part['diagnostics']['candle_diagnostics']),part['metrics']['candles'])
@@ -114,6 +118,16 @@ class DiagnosticsTests(unittest.TestCase):
                 with open(folder/(k+'_trade_risk.csv'),encoding='utf-8-sig',newline='') as f:
                     self.assertIn('fee_to_risk_pct',csv.DictReader(f).fieldnames)
             self.assertEqual(json.loads((folder/'validation.json').read_text(encoding='utf8'))['version'],'0.5')
+
+    def test_research_cli_prints_in_legacy_console_encoding(self):
+        env=os.environ.copy()
+        env['PYTHONIOENCODING']='cp1252'
+        completed=subprocess.run(
+            [sys.executable,'-m','lab.cli','--scenario','down','--backtest'],
+            cwd=Path(__file__).resolve().parents[1],
+            env=env,capture_output=True,check=False)
+        self.assertEqual(completed.returncode,0,completed.stderr.decode('utf-8','replace'))
+        self.assertIn('Виртуальный тест:',completed.stdout.decode('utf-8'))
 
 
 if __name__=='__main__':

@@ -405,7 +405,7 @@ class MainView(BoxLayout):
                   'причины по каждой свече и риск по каждой сделке.']
         panel=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8))
         scroll=ScrollView()
-        info=Label(text='\\n'.join(lines),color=TEXT,font_size='13sp',
+        info=Label(text='\n'.join(lines),color=TEXT,font_size='13sp',
                    size_hint_y=None,halign='left',valign='top')
         info.bind(width=lambda w,v:setattr(w,'text_size',(max(dp(250),v-dp(24)),None)))
         info.bind(texture_size=lambda w,sz:setattr(w,'height',sz[1]+dp(24)))
@@ -443,12 +443,12 @@ class MainView(BoxLayout):
         headline=short_summary(report)
         train_n=report['training']['metrics']['trade_count']
         test_n=report['holdout']['metrics']['trade_count']
-        sample_warning=('ВНИМАНИЕ: мало сделок в TRAIN/HOLDOUT, оценки нестабильны.\\n'
+        sample_warning=('ВНИМАНИЕ: мало сделок в TRAIN/HOLDOUT, оценки нестабильны.\n'
                         if min(train_n,test_n)<20 else '')
-        details=(headline+'\\n\\n'+sample_warning+
-                 'Настройки выбраны только по TRAIN. Последние 30% — независимый тест.\\n'
-                 'История не содержит исторических карт ликвидаций CoinGlass.\\n\\n'
-                 'ОГРАНИЧЕНИЯ:\\n'+'\\n'.join('• '+x for x in report['warnings']))
+        details=(headline+'\n\n'+sample_warning+
+                 'Настройки выбраны только по TRAIN. Последние 30% — независимый тест.\n'
+                 'История не содержит исторических карт ликвидаций CoinGlass.\n\n'
+                 'ОГРАНИЧЕНИЯ:\n'+'\n'.join('• '+x for x in report['warnings']))
         self.set_note(f"ПРОВЕРКА 70/30: HOLDOUT {report['holdout']['metrics']['return_pct']:+.2f}%; "
                       f"сделок {test_n}. Экспорт доступен в отчёте.")
         content=BoxLayout(orientation='vertical',spacing=dp(8),padding=dp(10))

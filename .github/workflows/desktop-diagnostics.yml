@@ -3,7 +3,7 @@ on:
   push:
     branches: [feature/diagnostics-v0.5]
   pull_request:
-    paths: ['lab/**', 'tests/**', '.github/workflows/desktop-diagnostics.yml']
+    paths: ['main.py', 'lab/**', 'tests/**', '.github/workflows/desktop-diagnostics.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -25,6 +25,11 @@ jobs:
         run: python -m compileall -q main.py lab tests
       - name: Offline regression tests
         run: python -m unittest discover -s tests -v
+      - name: Research CLI under legacy Windows encoding
+        if: matrix.os == 'windows-2022'
+        env:
+          PYTHONIOENCODING: cp1252
+        run: python -m lab.cli --scenario down --backtest
       - name: Diagnostic audit export smoke test
         run: python -m lab.validate_cli --demo down --output ci-audit-0-5
       - name: Upload synthetic smoke-test report

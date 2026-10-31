@@ -260,7 +260,7 @@ def short_summary(report):
         f"HOLDOUT: {b['trade_count']} сделок, {b['return_pct']:+.2f}%, "
         f"DD {b['max_drawdown_pct']:.2f}%, PF {b['profit_factor']}\n"
         f"BASELINE HOLDOUT: {c['return_pct']:+.2f}% на {c['trade_count']} сделках\n"
-        "ВНИМАНИЕ: это виртуальный тест на OHLC; карта ликвидаций не участвовала.\\n"
+        "ВНИМАНИЕ: это виртуальный тест на OHLC; карта ликвидаций не участвовала.\n"
         "ФИЛЬТРЫ HOLDOUT: " +
         '; '.join(f"{code}={count}" for code,count in
                   sorted(report['holdout']['diagnostics']['actual_gate_counts'].items(),
