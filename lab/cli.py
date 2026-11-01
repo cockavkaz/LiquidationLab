@@ -3,6 +3,7 @@ import argparse
 import csv
 import json
 import os
+import sys
 from datetime import datetime, timezone
 from .sources import (synthetic_scenario, load_candles_csv, save_candles_csv,
                       load_clusters_csv, fetch_coinglass_snapshot)
@@ -11,6 +12,13 @@ from .detection import describe
 
 
 def main():
+    # Windows CI and legacy terminals may use CP1252/CP866 for redirected output.
+    # Keep Russian report text readable and avoid a UnicodeEncodeError.
+    if hasattr(sys.stdout, 'reconfigure'):
+        try:
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        except (ValueError, OSError):
+            pass
     parser = argparse.ArgumentParser(description='Liquidation Lab (offline research, no orders)')
     parser.add_argument('--scenario', choices=['up', 'down', 'sideways'], default='up')
     parser.add_argument('--csv', help='Optional historical OHLC CSV')

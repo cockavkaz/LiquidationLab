@@ -1,0 +1,41 @@
+name: Desktop diagnostics 0.5
+on:
+  push:
+    branches: [feature/diagnostics-v0.5]
+  pull_request:
+    paths: ['main.py', 'lab/**', 'tests/**', '.github/workflows/desktop-diagnostics.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnostics:
+    name: Diagnostics Python ${{ matrix.python }} - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+        python: ['3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Compile Python including GUI (syntax-only)
+        run: python -m compileall -q main.py lab tests
+      - name: Offline regression tests
+        run: python -m unittest discover -s tests -v
+      - name: Research CLI under legacy Windows encoding
+        if: matrix.os == 'windows-2022'
+        env:
+          PYTHONIOENCODING: cp1252
+        run: python -m lab.cli --scenario down --backtest
+      - name: Diagnostic audit export smoke test
+        run: python -m lab.validate_cli --demo down --output ci-audit-0-5
+      - name: Upload synthetic smoke-test report
+        if: success() && matrix.os == 'ubuntu-22.04' && matrix.python == '3.11'
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-diagnostics-v0-5-only
+          path: ci-audit-0-5/
+          if-no-files-found: error

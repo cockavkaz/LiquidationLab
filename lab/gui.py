@@ -22,6 +22,7 @@ from .history import fetch_bybit_history
 from .indicators import ema
 from .replay import ReplaySession
 from .validation import validate_history, export_validation, short_summary
+from .diagnostics import diagnose_session, explain_at, diagnostic_summary, REASONS
 from .sources import (synthetic_scenario, fetch_coinglass_snapshot,
                       load_candles_csv, save_candles_csv)
 
@@ -182,8 +183,9 @@ class MainView(BoxLayout):
         self.source='Искусственные свечи'
         self._slider_lock=False
         self.validation_report=None
+        self.diagnostic_report=None
 
-        self.add_widget(label('LIQUIDATION LAB 0.4   |   ВОСПРОИЗВЕДЕНИЕ + ПРОВЕРКА',
+        self.add_widget(label('LIQUIDATION LAB 0.5   |   РАЗБОР СИГНАЛОВ',
                               '20sp', 37, TEAL, True))
         top=BoxLayout(spacing=dp(7),size_hint_y=None,height=dp(41))
         self.mode=spinner('Демо: снижение',('Демо: рост','Демо: снижение','Демо: боковик','Bybit BTCUSDT'),145)
@@ -204,7 +206,7 @@ class MainView(BoxLayout):
         bar=BoxLayout(spacing=dp(6),size_hint_y=None,height=dp(43))
         bar.add_widget(button('|<',lambda *_:self.seek(0),48))
         bar.add_widget(button('<',lambda *_:self.step(-1),48))
-        self.play_button=button('▶',lambda *_:self.toggle_play(),65)
+        self.play_button=button('ПУСК',lambda *_:self.toggle_play(),78)
         bar.add_widget(self.play_button)
         bar.add_widget(button('>',lambda *_:self.step(1),48))
         bar.add_widget(button('>|',lambda *_:self.to_end(),48))
@@ -218,6 +220,8 @@ class MainView(BoxLayout):
 
         self.status=label('', '14sp', 31, TEAL, True)
         self.add_widget(self.status)
+        self.filter_note=label('', '11sp', 43, GOLD)
+        self.add_widget(self.filter_note)
         self.explain=label('', '12sp', 73, TEXT)
         self.add_widget(self.explain)
         self.journal=label('', '12sp', 72, MUTED)
@@ -226,6 +230,7 @@ class MainView(BoxLayout):
         actions=BoxLayout(spacing=dp(6),size_hint_y=None,height=dp(40))
         actions.add_widget(button('БЭКТЕСТ',lambda *_:self.backtest()))
         actions.add_widget(button('TRAIN / HOLDOUT',lambda *_:self.validate_oos()))
+        actions.add_widget(button('РАЗБОР ОТКАЗОВ',lambda *_:self.open_diagnostics()))
         self.csv_path=TextInput(text='data/bybit_history.csv',multiline=False,font_size='12sp',size_hint_x=2)
         actions.add_widget(self.csv_path)
         actions.add_widget(button('CSV ОТКРЫТЬ',lambda *_:self.load_csv()))
@@ -247,7 +252,7 @@ class MainView(BoxLayout):
         if self.play_clock is not None:
             self.play_clock.cancel()
             self.play_clock=None
-        self.play_button.text='▶'
+        self.play_button.text='ПУСК'
 
     def load(self):
         self.pause()
@@ -307,14 +312,14 @@ class MainView(BoxLayout):
         if self.session is None:return
         if self.session.cursor>=len(self.candles)-1:
             self.seek(0)
-        self.play_button.text='II'
+        self.play_button.text='ПАУЗА'
         self.change_speed()
 
     def change_speed(self):
         if self.play_clock is not None:
             self.play_clock.cancel()
             self.play_clock=None
-        if self.play_button.text=='II' and self.session:
+        if self.play_button.text=='ПАУЗА' and self.session:
             speed=int(self.speed.text.replace('x',''))
             self.play_clock=Clock.schedule_interval(self._play_tick,max(.045,.34/speed))
 
@@ -336,9 +341,21 @@ class MainView(BoxLayout):
         self.status.text=(f'{frame.phase.upper()}  |  {frame.action}  | '
                           f' equity {frame.equity:,.2f} | просадка {frame.max_drawdown_pct:.2f}%')
         self.explain.text=frame.explanation
+        # Only currently visible history is consulted; future candles are ignored.
+        info=explain_at(self.candles,frame.index,self.session.params,
+                        atr_values=self.session._atr,rsi_values=self.session._rsi,
+                        ema_fast_values=self.session._ema_fast,
+                        ema_slow_values=self.session._ema_slow)
+        code=info['reason_code']
+        if frame.position or 'ENTRY' in frame.action or 'EXIT' in frame.action:
+            self.filter_note.text='Виртуальная позиция открыта или произошёл вход/выход.'
+        elif frame.index+1>=len(self.candles):
+            self.filter_note.text='Нет следующей закрытой свечи для виртуального исполнения.'
+        else:
+            self.filter_note.text=f"Проверка: {code} — {REASONS.get(code,'')}"
         recent=self.session.visible_trades()[-3:]
         self.journal.text=('ЗАКРЫТЫЕ ВИРТУАЛЬНЫЕ СДЕЛКИ: '+str(frame.trade_count)+'\n'+
-                           ('\n'.join(f"#{t['opened']}→{t['closed']} {t['side']} {t['reason']}  {t['pnl']:+.2f}"
+                           ('\n'.join(f"#{t['opened']} -> {t['closed']} {t['side']} {t['reason']}  {t['pnl']:+.2f}"
                                       for t in recent) if recent else 'Сделок пока нет'))
         if self.clusters and not last:
             self.note.text='Текущая/демо карта скрыта: на исторических свечах она могла бы раскрыть будущее.'
@@ -354,6 +371,54 @@ class MainView(BoxLayout):
                           f"прибыльных {out['win_rate_pct']:.1f}%, max DD {out['max_drawdown_pct']:.2f}% "
                           '(включая плавающую просадку)')
         self.run_async(lambda:simulate(candles),done)
+
+    def open_diagnostics(self):
+        """Analyze all available candles without changing trading parameters."""
+        if self.session is None:
+            self.set_note('Сначала загрузите свечи.')
+            return
+        if self.busy:
+            self.set_note('Дождитесь текущей загрузки.')
+            return
+        self.pause()
+        cursor=self.session.cursor
+        session=self.session
+        self.run_async(lambda:diagnose_session(session),
+                       lambda result:self._show_diagnostics(result,cursor))
+
+    def _show_diagnostics(self,result,cursor):
+        self.diagnostic_report=result
+        self.seek(cursor)
+        rank=sorted(result['actual_gate_counts'].items(),key=lambda x:-x[1])
+        lines=[diagnostic_summary(result), '',
+               'ПРИЧИНЫ ОТКЛОНЕНИЙ:']
+        lines += [f'{code} ({count}): {REASONS.get(code,"")}'
+                  for code,count in rank[:12]]
+        lines += ['', 'ВИРТУАЛЬНЫЕ СДЕЛКИ:']
+        for i,t in enumerate(result['trades'],1):
+            a=t['stop_distance_atr']
+            fee=t['fee_to_risk_pct']
+            astr=f"{a:.2f}" if a is not None else '—'
+            fstr=f"{fee:.1f}%" if fee is not None else '—'
+            lines.append(f"#{i}: {t['side']} {t['reason']} | P&L {t['pnl']:+.2f} | стоп/ATR {astr} | комиссии/риск {fstr}")
+        lines += ['', 'TRAIN/HOLDOUT: ЭКСПОРТ JSON + CSV сохраняет подробные',
+                  'причины по каждой свече и риск по каждой сделке.']
+        panel=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8))
+        scroll=ScrollView()
+        info=Label(text='\n'.join(lines),color=TEXT,font_size='13sp',
+                   size_hint_y=None,halign='left',valign='top')
+        info.bind(width=lambda w,v:setattr(w,'text_size',(max(dp(250),v-dp(24)),None)))
+        info.bind(texture_size=lambda w,sz:setattr(w,'height',sz[1]+dp(24)))
+        scroll.add_widget(info)
+        panel.add_widget(scroll)
+        popup=Popup(title='Диагностика виртуальных сигналов · 0.5',
+                    content=panel,size_hint=(.88,.85))
+        controls=BoxLayout(size_hint_y=None,height=dp(42),spacing=dp(6))
+        controls.add_widget(button('TRAIN/HOLDOUT',lambda *_:(popup.dismiss(),self.validate_oos())))
+        controls.add_widget(button('ЗАКРЫТЬ',lambda *_:popup.dismiss()))
+        panel.add_widget(controls)
+        popup.open()
+        self.set_note('Разбор отказов готов; правила стратегии не менялись.')
 
     def validate_oos(self):
         """Independent research holdout; no trading, no live CoinGlass lookahead."""
@@ -378,12 +443,12 @@ class MainView(BoxLayout):
         headline=short_summary(report)
         train_n=report['training']['metrics']['trade_count']
         test_n=report['holdout']['metrics']['trade_count']
-        sample_warning=('ВНИМАНИЕ: мало сделок в TRAIN/HOLDOUT, оценки нестабильны.\\n'
+        sample_warning=('ВНИМАНИЕ: мало сделок в TRAIN/HOLDOUT, оценки нестабильны.\n'
                         if min(train_n,test_n)<20 else '')
-        details=(headline+'\\n\\n'+sample_warning+
-                 'Настройки выбраны только по TRAIN. Последние 30% — независимый тест.\\n'
-                 'История не содержит исторических карт ликвидаций CoinGlass.\\n\\n'
-                 'ОГРАНИЧЕНИЯ:\\n'+'\\n'.join('• '+x for x in report['warnings']))
+        details=(headline+'\n\n'+sample_warning+
+                 'Настройки выбраны только по TRAIN. Последние 30% — независимый тест.\n'
+                 'История не содержит исторических карт ликвидаций CoinGlass.\n\n'
+                 'ОГРАНИЧЕНИЯ:\n'+'\n'.join('• '+x for x in report['warnings']))
         self.set_note(f"ПРОВЕРКА 70/30: HOLDOUT {report['holdout']['metrics']['return_pct']:+.2f}%; "
                       f"сделок {test_n}. Экспорт доступен в отчёте.")
         content=BoxLayout(orientation='vertical',spacing=dp(8),padding=dp(10))
@@ -396,7 +461,7 @@ class MainView(BoxLayout):
         content.add_widget(sc)
         buttons=BoxLayout(size_hint_y=None,height=dp(44),spacing=dp(8))
         buttons.add_widget(button('ЭКСПОРТ JSON + CSV',lambda *_:self.export_oos()))
-        popup=Popup(title='VALIDATION 0.4 · CHRONOLOGICAL TRAIN / HOLDOUT',
+        popup=Popup(title='TRAIN / HOLDOUT — проверка истории · 0.5',
                     content=content,size_hint=(.88,.86),auto_dismiss=True)
         buttons.add_widget(button('ЗАКРЫТЬ',lambda *_:popup.dismiss(),110))
         content.add_widget(buttons)
@@ -480,7 +545,7 @@ class MainView(BoxLayout):
 
 class LiquidationLabApp(App):
     def build(self):
-        self.title='Liquidation Lab 0.4 — воспроизведение и проверка'
+        self.title='Liquidation Lab 0.5 — диагностика сигналов'
         Window.clearcolor=(.045,.062,.102,1)
         if Window.system_size[0] < 1040:
             Window.size=(1160,790)
