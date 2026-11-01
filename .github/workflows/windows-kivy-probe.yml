@@ -1,0 +1,26 @@
+name: Windows Kivy UI probe 0.5
+on:
+  push:
+    branches: [ci/windows-kivy-probe-v0.5]
+permissions:
+  contents: read
+jobs:
+  ui:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install desktop GUI
+        run: python -m pip install -r requirements.txt
+      - name: Launch Kivy and exercise replay, dialogs and CSV export
+        run: python -m qa.windows_kivy_probe
+      - name: Upload GUI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-kivy-ui-evidence
+          path: qa-output/
+          if-no-files-found: warn
