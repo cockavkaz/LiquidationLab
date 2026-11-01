@@ -10,7 +10,7 @@ import subprocess
 import sys
 import traceback
 
-SOURCE_COMMIT = "d7a6d07c95508329e059c58bd0f50c981e524bd8"
+SOURCE_COMMIT = "b43f4268a6a7cd46d08ec9d5a9b37da0247c73a6"
 ROOT = Path(__file__).resolve().parents[1]
 
 

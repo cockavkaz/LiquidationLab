@@ -252,13 +252,16 @@ def export_validation(report, directory):
 def short_summary(report):
     a=report['training']['metrics'];b=report['holdout']['metrics']
     c=report['baseline_holdout']['metrics']
+    factor=b['profit_factor']
+    factor_text=(f'{factor:.2f}' if factor is not None
+                 else 'не определён: нет убыточных сделок')
     return (
         f"ИСТОРИЯ: {report['quality']['candles']} свечей, разрывов {report['quality']['gaps']}\n"
         f"TRAIN {report['split']['train_count']} | HOLDOUT {report['split']['holdout_count']}\n"
         f"TRAIN: {a['trade_count']} сделок, {a['return_pct']:+.2f}%, DD {a['max_drawdown_pct']:.2f}%\n"
         f"ВЫБОР ПО TRAIN: {report['selected_preset']}\n"
         f"HOLDOUT: {b['trade_count']} сделок, {b['return_pct']:+.2f}%, "
-        f"DD {b['max_drawdown_pct']:.2f}%, PF {b['profit_factor']}\n"
+        f"DD {b['max_drawdown_pct']:.2f}%, фактор прибыли {factor_text}\n"
         f"BASELINE HOLDOUT: {c['return_pct']:+.2f}% на {c['trade_count']} сделках\n"
         "ВНИМАНИЕ: это виртуальный тест на OHLC; карта ликвидаций не участвовала.\n"
         "ФИЛЬТРЫ HOLDOUT: " +
