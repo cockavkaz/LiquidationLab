@@ -8,6 +8,8 @@ jobs:
   ui:
     runs-on: windows-2022
     timeout-minutes: 10
+    env:
+      KIVY_GL_BACKEND: angle_sdl2
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
