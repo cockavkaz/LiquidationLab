@@ -1,0 +1,39 @@
+name: Windows manual launcher setup
+on:
+  push:
+    branches: [qa/windows-manual-v0.5]
+permissions:
+  contents: read
+jobs:
+  launcher:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check the double-click launcher in a path containing spaces and Cyrillic
+        shell: pwsh
+        run: |
+          $qaPath = Join-Path $env:RUNNER_TEMP 'Проверка Liquidation Lab'
+          New-Item -ItemType Directory -Path $qaPath -Force | Out-Null
+          Copy-Item -Path * -Destination $qaPath -Recurse -Force
+          Push-Location $qaPath
+          try {
+            cmd /c START_WINDOWS.cmd --check
+            if ($LASTEXITCODE -ne 0) { throw 'Launcher setup failed' }
+            $record = Get-ChildItem qa-output/environment-*.json | Select-Object -Last 1 | Get-Content -Raw | ConvertFrom-Json
+            if ($record.kivy -ne '2.3.1' -or $record.exit_code -ne 0 -or $record.manual_visual_check -ne 'pending') { throw 'Invalid setup evidence' }
+            cmd /c START_WINDOWS.cmd --check
+            if ($LASTEXITCODE -ne 0) { throw 'Launcher reuse failed' }
+          } finally {
+            Pop-Location
+            Copy-Item -Path (Join-Path $qaPath 'qa-output') -Destination . -Recurse -Force
+          }
+      - name: Upload setup logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-launcher-setup
+          path: qa-output/
