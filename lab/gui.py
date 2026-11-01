@@ -206,7 +206,7 @@ class MainView(BoxLayout):
         bar=BoxLayout(spacing=dp(6),size_hint_y=None,height=dp(43))
         bar.add_widget(button('|<',lambda *_:self.seek(0),48))
         bar.add_widget(button('<',lambda *_:self.step(-1),48))
-        self.play_button=button('▶',lambda *_:self.toggle_play(),65)
+        self.play_button=button('ПУСК',lambda *_:self.toggle_play(),78)
         bar.add_widget(self.play_button)
         bar.add_widget(button('>',lambda *_:self.step(1),48))
         bar.add_widget(button('>|',lambda *_:self.to_end(),48))
@@ -252,7 +252,7 @@ class MainView(BoxLayout):
         if self.play_clock is not None:
             self.play_clock.cancel()
             self.play_clock=None
-        self.play_button.text='▶'
+        self.play_button.text='ПУСК'
 
     def load(self):
         self.pause()
@@ -312,14 +312,14 @@ class MainView(BoxLayout):
         if self.session is None:return
         if self.session.cursor>=len(self.candles)-1:
             self.seek(0)
-        self.play_button.text='II'
+        self.play_button.text='ПАУЗА'
         self.change_speed()
 
     def change_speed(self):
         if self.play_clock is not None:
             self.play_clock.cancel()
             self.play_clock=None
-        if self.play_button.text=='II' and self.session:
+        if self.play_button.text=='ПАУЗА' and self.session:
             speed=int(self.speed.text.replace('x',''))
             self.play_clock=Clock.schedule_interval(self._play_tick,max(.045,.34/speed))
 
@@ -355,7 +355,7 @@ class MainView(BoxLayout):
             self.filter_note.text=f"Проверка: {code} — {REASONS.get(code,'')}"
         recent=self.session.visible_trades()[-3:]
         self.journal.text=('ЗАКРЫТЫЕ ВИРТУАЛЬНЫЕ СДЕЛКИ: '+str(frame.trade_count)+'\n'+
-                           ('\n'.join(f"#{t['opened']}→{t['closed']} {t['side']} {t['reason']}  {t['pnl']:+.2f}"
+                           ('\n'.join(f"#{t['opened']} -> {t['closed']} {t['side']} {t['reason']}  {t['pnl']:+.2f}"
                                       for t in recent) if recent else 'Сделок пока нет'))
         if self.clusters and not last:
             self.note.text='Текущая/демо карта скрыта: на исторических свечах она могла бы раскрыть будущее.'
@@ -401,7 +401,7 @@ class MainView(BoxLayout):
             astr=f"{a:.2f}" if a is not None else '—'
             fstr=f"{fee:.1f}%" if fee is not None else '—'
             lines.append(f"#{i}: {t['side']} {t['reason']} | P&L {t['pnl']:+.2f} | стоп/ATR {astr} | комиссии/риск {fstr}")
-        lines += ['', 'TRAIN/HOLDOUT → ЭКСПОРТ JSON + CSV сохраняет подробные',
+        lines += ['', 'TRAIN/HOLDOUT: ЭКСПОРТ JSON + CSV сохраняет подробные',
                   'причины по каждой свече и риск по каждой сделке.']
         panel=BoxLayout(orientation='vertical',padding=dp(12),spacing=dp(8))
         scroll=ScrollView()
