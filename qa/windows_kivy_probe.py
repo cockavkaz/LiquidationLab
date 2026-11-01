@@ -1,4 +1,5 @@
 """Run a real Kivy window on a Windows runner and record reviewable UI evidence."""
+import hashlib
 import json
 import sys
 import traceback
@@ -143,6 +144,14 @@ class ProbeApp(LiquidationLabApp):
         self.finish(False, reason)
 
     def finish(self, success, reason):
+        if success:
+            fingerprints = {
+                hashlib.sha256(Path(item["path"]).read_bytes()).hexdigest()
+                for item in self.evidence
+            }
+            if len(self.evidence) != 5 or len(fingerprints) < 2:
+                success = False
+                reason = "Window screenshots are identical; visible rendering is unverified"
         self.finished = True
         status = {"success": success, "error": reason, "evidence": self.evidence,
                   "window_size": list(Window.size)}
