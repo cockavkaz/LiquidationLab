@@ -461,7 +461,7 @@ class MainView(BoxLayout):
         content.add_widget(sc)
         buttons=BoxLayout(size_hint_y=None,height=dp(44),spacing=dp(8))
         buttons.add_widget(button('ЭКСПОРТ JSON + CSV',lambda *_:self.export_oos()))
-        popup=Popup(title='VALIDATION 0.4 · CHRONOLOGICAL TRAIN / HOLDOUT',
+        popup=Popup(title='TRAIN / HOLDOUT — проверка истории · 0.5',
                     content=content,size_hint=(.88,.86),auto_dismiss=True)
         buttons.add_widget(button('ЗАКРЫТЬ',lambda *_:popup.dismiss(),110))
         content.add_widget(buttons)
